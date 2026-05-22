@@ -317,8 +317,19 @@ def predict_crypto(symbol, timeframe):
         symbol,
         period=period,
         interval=interval,
-        auto_adjust=True
+        auto_adjust=True,
+        progress=False
     )
+    if data.empty:
+
+        return (
+            "❌ No Data",
+            0,
+            "ERROR",
+            "",
+            "Yahoo Finance returned empty data",
+            ""
+        )
 
     data["SMA_10"] = data["Close"].rolling(10).mean()
 
@@ -335,6 +346,16 @@ def predict_crypto(symbol, timeframe):
     ).astype(int)
 
     data = data.dropna()
+    if len(data) < 50:
+
+        return (
+            "❌ Not enough data",
+            0,
+            "ERROR",
+            "Market data unavailable",
+            "Try another coin or timeframe",
+            ""
+        )
 
     X = data[[
         "Open",
