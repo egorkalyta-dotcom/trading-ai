@@ -4,7 +4,6 @@ import yfinance as yf
 
 import os
 
-from sklearn.ensemble import RandomForestClassifier
 
 import matplotlib
 matplotlib.use('Agg')
@@ -296,23 +295,27 @@ def predict_crypto(symbol, timeframe):
     if timeframe == "15m":
         period = "7d"
         interval = "15m"
-        future_label = "NEXT 15 MINUTES"
+        future_label = "15 MIN TREND"
 
     elif timeframe == "1h":
         period = "60d"
         interval = "1h"
-        future_label = "NEXT HOUR"
+        future_label = "1 HOUR TREND"
 
     elif timeframe == "4h":
         period = "180d"
-        interval = "4h"
-        future_label = "NEXT 4 HOURS"
+
+        # Yahoo не поддерживает 4h
+        interval = "1h"
+
+        future_label = "4 HOUR TREND"
 
     else:
         period = "365d"
         interval = "1d"
-        future_label = "NEXT DAY"
+        future_label = "DAILY TREND"
 
+    # Загрузка данных
     data = yf.download(
         symbol,
         period=period,
@@ -320,100 +323,216 @@ def predict_crypto(symbol, timeframe):
         auto_adjust=True,
         progress=False
     )
+
     if data.empty:
 
         return (
             "❌ No Data",
-            0,
+            "",
             "ERROR",
             "",
-            "Yahoo Finance returned empty data",
+            "No market data",
             ""
         )
 
-    data["SMA_10"] = data["Close"].rolling(10).mean()
-
-    data["SMA_30"] = data["Close"].rolling(30).mean()
-
-    data["Momentum"] = data["Close"] - data["Close"].shift(5)
-
-    data["Volatility"] = (
-        data["High"] - data["Low"]
+    # Индикаторы
+    data["SMA_10"] = (
+        data["Close"].rolling(10).mean()
     )
 
-    data["Target"] = (
-        data["Close"].shift(-1) > data["Close"]
-    ).astype(int)
+    data["SMA_30"] = (
+        data["Close"].rolling(30).mean()
+    )
+
+    data["EMA_50"] = (
+        data["Close"].ewm(span=50).mean()
+    )
+
+    data["EMA_200"] = (
+        data["Close"].ewm(span=200).mean()
+    )
+
+    data["Momentum"] = (
+        data["Close"] - data["Close"].shift(5)
+    )
+
+    # RSI
+    delta = data["Close"].diff()
+
+    gain = delta.clip(lower=0)
+
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(14).mean()
+
+    avg_loss = loss.rolling(14).mean()
+
+    rs = avg_gain / avg_loss
+
+    data["RSI"] = (
+        100 - (100 / (1 + rs))
+    )
+
+    # MACD
+    ema12 = data["Close"].ewm(span=12).mean()
+
+    ema26 = data["Close"].ewm(span=26).mean()
+
+    data["MACD"] = ema12 - ema26
+
+    data["MACD_SIGNAL"] = (
+        data["MACD"].ewm(span=9).mean()
+    )
+
+    # Объём
+    data["Volume_SMA"] = (
+        data["Volume"].rolling(20).mean()
+    )
 
     data = data.dropna()
+
     if len(data) < 50:
 
         return (
             "❌ Not enough data",
-            0,
+            "",
             "ERROR",
-            "Market data unavailable",
-            "Try another coin or timeframe",
+            "",
+            "Try another timeframe",
             ""
         )
 
-    X = data[[
-        "Open",
-        "High",
-        "Low",
-        "Close",
-        "Volume",
-        "SMA_10",
-        "SMA_30",
-        "Momentum",
-        "Volatility"
-    ]]
-
-    y = data["Target"]
-
-    model = RandomForestClassifier(
-        n_estimators=500,
-        random_state=42
-    )
-
-    model.fit(X, y)
-
-    last = X.iloc[-1:]
-
-    prediction = model.predict(last)[0]
-
-    probability = model.predict_proba(last)[0]
-
-    confidence = round(max(probability) * 100)
-
+    # Последние значения
     sma10 = data["SMA_10"].iloc[-1]
 
     sma30 = data["SMA_30"].iloc[-1]
 
+    ema50 = data["EMA_50"].iloc[-1]
+
+    ema200 = data["EMA_200"].iloc[-1]
+
+    momentum = data["Momentum"].iloc[-1]
+
+    rsi = data["RSI"].iloc[-1]
+
+    macd = data["MACD"].iloc[-1]
+
+    macd_signal = data["MACD_SIGNAL"].iloc[-1]
+
+    volume = data["Volume"].iloc[-1]
+
+    volume_avg = data["Volume_SMA"].iloc[-1]
+
+    bullish_score = 0
+
+    bearish_score = 0
+
+    # SMA
     if sma10 > sma30:
-        market = "🔥 BULLISH TREND"
+        bullish_score += 1
+    else:
+        bearish_score += 1
+
+    # EMA
+    if ema50 > ema200:
+        bullish_score += 1
+    else:
+        bearish_score += 1
+
+    # Momentum
+    if momentum > 0:
+        bullish_score += 1
+    else:
+        bearish_score += 1
+
+    # RSI
+    if rsi > 60:
+        bullish_score += 2
+
+    elif rsi < 40:
+        bearish_score += 2
+
+    # MACD
+    if macd > macd_signal:
+        bullish_score += 1
+    else:
+        bearish_score += 1
+
+    # Volume
+    if volume > volume_avg:
+        bullish_score += 1
+
+    total_score = (
+        bullish_score + bearish_score
+    )
+
+    if total_score == 0:
+        total_score = 1
+
+    # Финальный анализ
+    if bullish_score > bearish_score:
+
+        strength = round(
+            bullish_score / total_score * 100
+        )
+
+        if bullish_score >= 5:
+            result = "🚀 STRONG BUY"
+        else:
+            result = "📈 BUY"
+
+        market = "🔥 BULLISH MARKET"
+
+        confidence = (
+            f"🤖 Bullish Strength: {strength}%"
+        )
 
         advice = (
-            "🧠 AI Advice: Trend is bullish. "
-            "Buyers control the market. "
-            "Possible upward continuation."
+            "🧠 Buyers dominate market. "
+            "Trend and momentum are strong. "
+            "Bullish continuation possible."
         )
 
     else:
-        market = "❄ BEARISH TREND"
 
-        advice = (
-            "🧠 AI Advice: Trend is bearish. "
-            "Sellers dominate the market. "
-            "Be careful with long positions."
+        strength = round(
+            bearish_score / total_score * 100
         )
 
-    if prediction == 1:
-        result = f"📈 {future_label}: UP"
-    else:
-        result = f"📉 {future_label}: DOWN"
+        if bearish_score >= 5:
+            result = "💥 STRONG SELL"
+        else:
+            result = "📉 SELL"
 
-    info = f"{symbol} • {interval} timeframe"
+        market = "❄ BEARISH MARKET"
+
+        confidence = (
+            f"🤖 Bearish Strength: {strength}%"
+        )
+
+        advice = (
+            "🧠 Sellers dominate market. "
+            "Momentum is weak. "
+            "Possible continuation downward."
+        )
+
+    # Support / Resistance
+    support = round(
+        data["Low"].tail(20).min(),
+        2
+    )
+
+    resistance = round(
+        data["High"].tail(20).max(),
+        2
+    )
+
+    info = (
+        f"{symbol} • "
+        f"RSI: {round(rsi,1)} • "
+        f"Support: {support} • "
+        f"Resistance: {resistance}"
+    )
 
     # График
     plt.figure(figsize=(10,5))
@@ -436,11 +555,23 @@ def predict_crypto(symbol, timeframe):
         label="SMA 30"
     )
 
+    plt.plot(
+        data.index[-50:],
+        data["EMA_50"].tail(50),
+        label="EMA 50"
+    )
+
+    plt.plot(
+        data.index[-50:],
+        data["EMA_200"].tail(50),
+        label="EMA 200"
+    )
+
     plt.legend()
 
     plt.grid(True)
 
-    plt.title(f"{symbol} Market Chart")
+    plt.title(f"{symbol} Market Trend")
 
     buffer = BytesIO()
 
@@ -462,9 +593,6 @@ def predict_crypto(symbol, timeframe):
         advice,
         graph
     )
-
-@app.route("/", methods=["GET", "POST"])
-
 def home():
 
     prediction = ""
