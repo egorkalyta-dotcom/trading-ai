@@ -1,6 +1,5 @@
 flask
 yfinance
-scikit-learn
 matplotlib
 pandas
 gunicorn
