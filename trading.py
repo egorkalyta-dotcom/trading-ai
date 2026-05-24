@@ -353,35 +353,46 @@ def predict_crypto(symbol, timeframe):
         # последние значения
         last = data.iloc[-1]
 
+# фикс типов
+        sma10 = float(last["SMA_10"])
+        sma30 = float(last["SMA_30"])
+        ema50 = float(last["EMA_50"])
+        ema200 = float(last["EMA_200"])
+        momentum = float(last["Momentum"])
+        rsi = float(last["RSI"])
+        macd = float(last["MACD"])
+        macd_signal = float(last["MACD_SIGNAL"])
+        volume = float(last["Volume"])
+        volume_avg = float(last["Volume_SMA"])
         bullish = 0
         bearish = 0
 
-        if last["SMA_10"] > last["SMA_30"]:
+        if sma10 > sma30:
             bullish += 1
         else:
             bearish += 1
 
-        if last["EMA_50"] > last["EMA_200"]:
+        if ema50 > ema200:
             bullish += 1
         else:
             bearish += 1
 
-        if last["Momentum"] > 0:
+        if momentum > 0:
             bullish += 1
         else:
             bearish += 1
 
-        if last["RSI"] > 60:
+        if rsi > 60:
             bullish += 2
-        elif last["RSI"] < 40:
+        elif rsi < 40:
             bearish += 2
 
-        if last["MACD"] > last["MACD_SIGNAL"]:
+        if macd > macd_signal:
             bullish += 1
         else:
             bearish += 1
 
-        if last["Volume"] > last["Volume_SMA"]:
+        if volume > volume_avg:
             bullish += 1
 
         total = bullish + bearish
