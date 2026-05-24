@@ -593,6 +593,8 @@ def predict_crypto(symbol, timeframe):
         advice,
         graph
     )
+    
+@app.route("/", methods=["GET", "POST"])
 def home():
 
     prediction = ""
@@ -647,6 +649,7 @@ def home():
     )
 
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 5000))
 
     app.run(
