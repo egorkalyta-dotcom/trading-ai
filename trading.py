@@ -230,10 +230,7 @@ HTML = """
                     Next Hour
                     </option>
 
-                    <option value="4h"
-                    {% if selected_tf == "4h" %}selected{% endif %}>
-                    Next 4 Hours
-                    </option>
+        
 
                     <option value="1d"
                     {% if selected_tf == "1d" %}selected{% endif %}>
@@ -315,6 +312,9 @@ def predict_crypto(symbol, timeframe):
             auto_adjust=True,
             progress=False
         )
+        # FIX MultiIndex (ОЧЕНЬ ВАЖНО)
+        if isinstance(data.columns, tuple) or hasattr(data.columns, 'levels'):
+            data.columns = data.columns.get_level_values(0)
 
         if data is None or data.empty:
             return ("❌ No Data", 0, "ERROR", "", "No market data", "")
@@ -353,17 +353,22 @@ def predict_crypto(symbol, timeframe):
         # последние значения
         last = data.iloc[-1]
 
-# фикс типов
-        sma10 = float(last["SMA_10"])
-        sma30 = float(last["SMA_30"])
-        ema50 = float(last["EMA_50"])
-        ema200 = float(last["EMA_200"])
-        momentum = float(last["Momentum"])
-        rsi = float(last["RSI"])
-        macd = float(last["MACD"])
-        macd_signal = float(last["MACD_SIGNAL"])
-        volume = float(last["Volume"])
-        volume_avg = float(last["Volume_SMA"])
+def safe(x):
+    try:
+        return float(x)
+    except:
+        return float(x.iloc[0])
+
+sma10 = safe(last["SMA_10"])
+sma30 = safe(last["SMA_30"])
+ema50 = safe(last["EMA_50"])
+ema200 = safe(last["EMA_200"])
+momentum = safe(last["Momentum"])
+rsi = safe(last["RSI"])
+macd = safe(last["MACD"])
+macd_signal = safe(last["MACD_SIGNAL"])
+volume = safe(last["Volume"])
+volume_avg = safe(last["Volume_SMA"])
         bullish = 0
         bearish = 0
 
