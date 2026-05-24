@@ -292,6 +292,7 @@ HTML = """
 
 def predict_crypto(symbol, timeframe):
 
+    # ❗ УБРАЛИ 4H ПОЛНОСТЬЮ
     if timeframe == "15m":
         period = "7d"
         interval = "15m"
@@ -302,20 +303,11 @@ def predict_crypto(symbol, timeframe):
         interval = "1h"
         future_label = "1 HOUR TREND"
 
-    elif timeframe == "4h":
-        period = "180d"
-
-        # Yahoo не поддерживает 4h
-        interval = "1h"
-
-        future_label = "4 HOUR TREND"
-
     else:
         period = "365d"
         interval = "1d"
         future_label = "DAILY TREND"
 
-    # Загрузка данных
     data = yf.download(
         symbol,
         period=period,
@@ -325,167 +317,93 @@ def predict_crypto(symbol, timeframe):
     )
 
     if data.empty:
-
-        return (
-            "❌ No Data",
-            "",
-            "ERROR",
-            "",
-            "No market data",
-            ""
-        )
+        return ("❌ No Data", "", "ERROR", "", "No market data", "")
 
     # Индикаторы
-    data["SMA_10"] = (
-        data["Close"].rolling(10).mean()
-    )
-
-    data["SMA_30"] = (
-        data["Close"].rolling(30).mean()
-    )
-
-    data["EMA_50"] = (
-        data["Close"].ewm(span=50).mean()
-    )
-
-    data["EMA_200"] = (
-        data["Close"].ewm(span=200).mean()
-    )
-
-    data["Momentum"] = (
-        data["Close"] - data["Close"].shift(5)
-    )
+    data["SMA_10"] = data["Close"].rolling(10).mean()
+    data["SMA_30"] = data["Close"].rolling(30).mean()
+    data["EMA_50"] = data["Close"].ewm(span=50).mean()
+    data["EMA_200"] = data["Close"].ewm(span=200).mean()
+    data["Momentum"] = data["Close"] - data["Close"].shift(5)
 
     # RSI
     delta = data["Close"].diff()
-
     gain = delta.clip(lower=0)
-
     loss = -delta.clip(upper=0)
-
     avg_gain = gain.rolling(14).mean()
-
     avg_loss = loss.rolling(14).mean()
-
     rs = avg_gain / avg_loss
-
-    data["RSI"] = (
-        100 - (100 / (1 + rs))
-    )
+    data["RSI"] = 100 - (100 / (1 + rs))
 
     # MACD
     ema12 = data["Close"].ewm(span=12).mean()
-
     ema26 = data["Close"].ewm(span=26).mean()
-
     data["MACD"] = ema12 - ema26
+    data["MACD_SIGNAL"] = data["MACD"].ewm(span=9).mean()
 
-    data["MACD_SIGNAL"] = (
-        data["MACD"].ewm(span=9).mean()
-    )
-
-    # Объём
-    data["Volume_SMA"] = (
-        data["Volume"].rolling(20).mean()
-    )
+    # Volume
+    data["Volume_SMA"] = data["Volume"].rolling(20).mean()
 
     data = data.dropna()
 
     if len(data) < 50:
-
-        return (
-            "❌ Not enough data",
-            "",
-            "ERROR",
-            "",
-            "Try another timeframe",
-            ""
-        )
+        return ("❌ Not enough data", "", "ERROR", "", "Try another timeframe", "")
 
     # Последние значения
     sma10 = data["SMA_10"].iloc[-1]
-
     sma30 = data["SMA_30"].iloc[-1]
-
     ema50 = data["EMA_50"].iloc[-1]
-
     ema200 = data["EMA_200"].iloc[-1]
-
     momentum = data["Momentum"].iloc[-1]
-
     rsi = data["RSI"].iloc[-1]
-
     macd = data["MACD"].iloc[-1]
-
     macd_signal = data["MACD_SIGNAL"].iloc[-1]
-
     volume = data["Volume"].iloc[-1]
-
     volume_avg = data["Volume_SMA"].iloc[-1]
 
     bullish_score = 0
-
     bearish_score = 0
 
-    # SMA
     if sma10 > sma30:
         bullish_score += 1
     else:
         bearish_score += 1
 
-    # EMA
     if ema50 > ema200:
         bullish_score += 1
     else:
         bearish_score += 1
 
-    # Momentum
     if momentum > 0:
         bullish_score += 1
     else:
         bearish_score += 1
 
-    # RSI
     if rsi > 60:
         bullish_score += 2
-
     elif rsi < 40:
         bearish_score += 2
 
-    # MACD
     if macd > macd_signal:
         bullish_score += 1
     else:
         bearish_score += 1
 
-    # Volume
     if volume > volume_avg:
         bullish_score += 1
 
-    total_score = (
-        bullish_score + bearish_score
-    )
-
+    total_score = bullish_score + bearish_score
     if total_score == 0:
         total_score = 1
 
-    # Финальный анализ
+    # 🔥 ФИКС CONFIDENCE
     if bullish_score > bearish_score:
 
-        strength = round(
-            bullish_score / total_score * 100
-        )
+        strength = round(bullish_score / total_score * 100)
 
-        if bullish_score >= 5:
-            result = "🚀 STRONG BUY"
-        else:
-            result = "📈 BUY"
-
+        result = "🚀 STRONG BUY" if bullish_score >= 5 else "📈 BUY"
         market = "🔥 BULLISH MARKET"
-
-        confidence = (
-            f"🤖 Bullish Strength: {strength}%"
-        )
+        confidence = strength  # ← ВАЖНО (теперь число)
 
         advice = (
             "🧠 Buyers dominate market. "
@@ -495,20 +413,11 @@ def predict_crypto(symbol, timeframe):
 
     else:
 
-        strength = round(
-            bearish_score / total_score * 100
-        )
+        strength = round(bearish_score / total_score * 100)
 
-        if bearish_score >= 5:
-            result = "💥 STRONG SELL"
-        else:
-            result = "📉 SELL"
-
+        result = "💥 STRONG SELL" if bearish_score >= 5 else "📉 SELL"
         market = "❄ BEARISH MARKET"
-
-        confidence = (
-            f"🤖 Bearish Strength: {strength}%"
-        )
+        confidence = strength  # ← ВАЖНО
 
         advice = (
             "🧠 Sellers dominate market. "
@@ -516,107 +425,49 @@ def predict_crypto(symbol, timeframe):
             "Possible continuation downward."
         )
 
-    # Support / Resistance
-    support = round(
-        data["Low"].tail(20).min(),
-        2
-    )
+    support = round(data["Low"].tail(20).min(), 2)
+    resistance = round(data["High"].tail(20).max(), 2)
 
-    resistance = round(
-        data["High"].tail(20).max(),
-        2
-    )
-
-    info = (
-        f"{symbol} • "
-        f"RSI: {round(rsi,1)} • "
-        f"Support: {support} • "
-        f"Resistance: {resistance}"
-    )
+    info = f"{symbol} • RSI: {round(rsi,1)} • Support: {support} • Resistance: {resistance}"
 
     # График
     plt.figure(figsize=(10,5))
-
-    plt.plot(
-        data.index[-50:],
-        data["Close"].tail(50),
-        label="Price"
-    )
-
-    plt.plot(
-        data.index[-50:],
-        data["SMA_10"].tail(50),
-        label="SMA 10"
-    )
-
-    plt.plot(
-        data.index[-50:],
-        data["SMA_30"].tail(50),
-        label="SMA 30"
-    )
-
-    plt.plot(
-        data.index[-50:],
-        data["EMA_50"].tail(50),
-        label="EMA 50"
-    )
-
-    plt.plot(
-        data.index[-50:],
-        data["EMA_200"].tail(50),
-        label="EMA 200"
-    )
+    plt.plot(data.index[-50:], data["Close"].tail(50), label="Price")
+    plt.plot(data.index[-50:], data["SMA_10"].tail(50), label="SMA 10")
+    plt.plot(data.index[-50:], data["SMA_30"].tail(50), label="SMA 30")
+    plt.plot(data.index[-50:], data["EMA_50"].tail(50), label="EMA 50")
+    plt.plot(data.index[-50:], data["EMA_200"].tail(50), label="EMA 200")
 
     plt.legend()
-
     plt.grid(True)
-
     plt.title(f"{symbol} Market Trend")
 
     buffer = BytesIO()
-
     plt.savefig(buffer, format="png")
-
     buffer.seek(0)
 
-    graph = base64.b64encode(
-        buffer.getvalue()
-    ).decode()
-
+    graph = base64.b64encode(buffer.getvalue()).decode()
     plt.close()
 
-    return (
-        result,
-        confidence,
-        market,
-        info,
-        advice,
-        graph
-    )
-    
+    return (result, confidence, market, info, advice, graph)
+
+
 @app.route("/", methods=["GET", "POST"])
 def home():
 
     prediction = ""
-
     confidence = ""
-
     market = ""
-
     info = ""
-
     advice = ""
-
     graph = ""
 
     selected_coin = "BTC-USD"
-
     selected_tf = "15m"
 
     if request.method == "POST":
 
         selected_coin = request.form["coin"]
-
         selected_tf = request.form["timeframe"]
 
         result, conf, trend, inf, adv, g = predict_crypto(
@@ -625,15 +476,10 @@ def home():
         )
 
         prediction = result
-
-        confidence = f"🤖 AI Confidence: {conf}%"
-
+        confidence = f"🤖 AI Confidence: {conf}%"  # теперь работает правильно
         market = trend
-
         info = inf
-
         advice = adv
-
         graph = g
 
     return render_template_string(
@@ -647,6 +493,7 @@ def home():
         selected_coin=selected_coin,
         selected_tf=selected_tf
     )
+
 
 if __name__ == "__main__":
 
