@@ -291,166 +291,135 @@ HTML = """
 """
 
 def predict_crypto(symbol, timeframe):
+    try:
 
-    # ❗ УБРАЛИ 4H ПОЛНОСТЬЮ
-    if timeframe == "15m":
-        period = "7d"
-        interval = "15m"
-        future_label = "15 MIN TREND"
+        if timeframe == "15m":
+            period = "7d"
+            interval = "15m"
+            future_label = "15 MIN TREND"
 
-    elif timeframe == "1h":
-        period = "60d"
-        interval = "1h"
-        future_label = "1 HOUR TREND"
+        elif timeframe == "1h":
+            period = "60d"
+            interval = "1h"
+            future_label = "1 HOUR TREND"
 
-    else:
-        period = "365d"
-        interval = "1d"
-        future_label = "DAILY TREND"
+        else:
+            period = "365d"
+            interval = "1d"
+            future_label = "DAILY TREND"
 
-    data = yf.download(
-        symbol,
-        period=period,
-        interval=interval,
-        auto_adjust=True,
-        progress=False
-    )
-
-    if data.empty:
-        return ("❌ No Data", "", "ERROR", "", "No market data", "")
-
-    # Индикаторы
-    data["SMA_10"] = data["Close"].rolling(10).mean()
-    data["SMA_30"] = data["Close"].rolling(30).mean()
-    data["EMA_50"] = data["Close"].ewm(span=50).mean()
-    data["EMA_200"] = data["Close"].ewm(span=200).mean()
-    data["Momentum"] = data["Close"] - data["Close"].shift(5)
-
-    # RSI
-    delta = data["Close"].diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(14).mean()
-    avg_loss = loss.rolling(14).mean()
-    rs = avg_gain / avg_loss
-    data["RSI"] = 100 - (100 / (1 + rs))
-
-    # MACD
-    ema12 = data["Close"].ewm(span=12).mean()
-    ema26 = data["Close"].ewm(span=26).mean()
-    data["MACD"] = ema12 - ema26
-    data["MACD_SIGNAL"] = data["MACD"].ewm(span=9).mean()
-
-    # Volume
-    data["Volume_SMA"] = data["Volume"].rolling(20).mean()
-
-    data = data.dropna()
-
-    if len(data) < 50:
-        return ("❌ Not enough data", "", "ERROR", "", "Try another timeframe", "")
-
-    # Последние значения
-    sma10 = data["SMA_10"].iloc[-1]
-    sma30 = data["SMA_30"].iloc[-1]
-    ema50 = data["EMA_50"].iloc[-1]
-    ema200 = data["EMA_200"].iloc[-1]
-    momentum = data["Momentum"].iloc[-1]
-    rsi = data["RSI"].iloc[-1]
-    macd = data["MACD"].iloc[-1]
-    macd_signal = data["MACD_SIGNAL"].iloc[-1]
-    volume = data["Volume"].iloc[-1]
-    volume_avg = data["Volume_SMA"].iloc[-1]
-
-    bullish_score = 0
-    bearish_score = 0
-
-    if sma10 > sma30:
-        bullish_score += 1
-    else:
-        bearish_score += 1
-
-    if ema50 > ema200:
-        bullish_score += 1
-    else:
-        bearish_score += 1
-
-    if momentum > 0:
-        bullish_score += 1
-    else:
-        bearish_score += 1
-
-    if rsi > 60:
-        bullish_score += 2
-    elif rsi < 40:
-        bearish_score += 2
-
-    if macd > macd_signal:
-        bullish_score += 1
-    else:
-        bearish_score += 1
-
-    if volume > volume_avg:
-        bullish_score += 1
-
-    total_score = bullish_score + bearish_score
-    if total_score == 0:
-        total_score = 1
-
-    # 🔥 ФИКС CONFIDENCE
-    if bullish_score > bearish_score:
-
-        strength = round(bullish_score / total_score * 100)
-
-        result = "🚀 STRONG BUY" if bullish_score >= 5 else "📈 BUY"
-        market = "🔥 BULLISH MARKET"
-        confidence = strength  # ← ВАЖНО (теперь число)
-
-        advice = (
-            "🧠 Buyers dominate market. "
-            "Trend and momentum are strong. "
-            "Bullish continuation possible."
+        data = yf.download(
+            symbol,
+            period=period,
+            interval=interval,
+            auto_adjust=True,
+            progress=False
         )
 
-    else:
+        if data is None or data.empty:
+            return ("❌ No Data", 0, "ERROR", "", "No market data", "")
 
-        strength = round(bearish_score / total_score * 100)
+        data = data.dropna()
 
-        result = "💥 STRONG SELL" if bearish_score >= 5 else "📉 SELL"
-        market = "❄ BEARISH MARKET"
-        confidence = strength  # ← ВАЖНО
+        if len(data) < 50:
+            return ("❌ Not enough data", 0, "ERROR", "", "Try another timeframe", "")
 
-        advice = (
-            "🧠 Sellers dominate market. "
-            "Momentum is weak. "
-            "Possible continuation downward."
-        )
+        # --- индикаторы ---
+        data["SMA_10"] = data["Close"].rolling(10).mean()
+        data["SMA_30"] = data["Close"].rolling(30).mean()
+        data["EMA_50"] = data["Close"].ewm(span=50).mean()
+        data["EMA_200"] = data["Close"].ewm(span=200).mean()
+        data["Momentum"] = data["Close"] - data["Close"].shift(5)
 
-    support = round(data["Low"].tail(20).min(), 2)
-    resistance = round(data["High"].tail(20).max(), 2)
+        delta = data["Close"].diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
 
-    info = f"{symbol} • RSI: {round(rsi,1)} • Support: {support} • Resistance: {resistance}"
+        avg_gain = gain.rolling(14).mean()
+        avg_loss = loss.rolling(14).mean()
 
-    # График
-    plt.figure(figsize=(10,5))
-    plt.plot(data.index[-50:], data["Close"].tail(50), label="Price")
-    plt.plot(data.index[-50:], data["SMA_10"].tail(50), label="SMA 10")
-    plt.plot(data.index[-50:], data["SMA_30"].tail(50), label="SMA 30")
-    plt.plot(data.index[-50:], data["EMA_50"].tail(50), label="EMA 50")
-    plt.plot(data.index[-50:], data["EMA_200"].tail(50), label="EMA 200")
+        rs = avg_gain / avg_loss.replace(0, 1)
+        data["RSI"] = 100 - (100 / (1 + rs))
 
-    plt.legend()
-    plt.grid(True)
-    plt.title(f"{symbol} Market Trend")
+        ema12 = data["Close"].ewm(span=12).mean()
+        ema26 = data["Close"].ewm(span=26).mean()
+        data["MACD"] = ema12 - ema26
+        data["MACD_SIGNAL"] = data["MACD"].ewm(span=9).mean()
 
-    buffer = BytesIO()
-    plt.savefig(buffer, format="png")
-    buffer.seek(0)
+        data["Volume_SMA"] = data["Volume"].rolling(20).mean()
 
-    graph = base64.b64encode(buffer.getvalue()).decode()
-    plt.close()
+        data = data.dropna()
 
-    return (result, confidence, market, info, advice, graph)
+        # последние значения
+        last = data.iloc[-1]
 
+        bullish = 0
+        bearish = 0
+
+        if last["SMA_10"] > last["SMA_30"]:
+            bullish += 1
+        else:
+            bearish += 1
+
+        if last["EMA_50"] > last["EMA_200"]:
+            bullish += 1
+        else:
+            bearish += 1
+
+        if last["Momentum"] > 0:
+            bullish += 1
+        else:
+            bearish += 1
+
+        if last["RSI"] > 60:
+            bullish += 2
+        elif last["RSI"] < 40:
+            bearish += 2
+
+        if last["MACD"] > last["MACD_SIGNAL"]:
+            bullish += 1
+        else:
+            bearish += 1
+
+        if last["Volume"] > last["Volume_SMA"]:
+            bullish += 1
+
+        total = bullish + bearish
+        if total == 0:
+            total = 1
+
+        if bullish > bearish:
+            strength = round(bullish / total * 100)
+            result = "🚀 STRONG BUY" if bullish >= 5 else "📈 BUY"
+            market = "🔥 BULLISH MARKET"
+        else:
+            strength = round(bearish / total * 100)
+            result = "💥 STRONG SELL" if bearish >= 5 else "📉 SELL"
+            market = "❄ BEARISH MARKET"
+
+        confidence = strength
+
+        support = round(data["Low"].tail(20).min(), 2)
+        resistance = round(data["High"].tail(20).max(), 2)
+
+        info = f"{symbol} • RSI: {round(last['RSI'],1)} • Support: {support} • Resistance: {resistance}"
+
+        # график
+        plt.figure(figsize=(10,5))
+        plt.plot(data.index[-50:], data["Close"].tail(50))
+        plt.grid(True)
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format="png")
+        buffer.seek(0)
+
+        graph = base64.b64encode(buffer.getvalue()).decode()
+        plt.close()
+
+        return (result, confidence, market, info, "AI analysis complete", graph)
+
+    except Exception as e:
+        return ("❌ ERROR", 0, "CRASH", "", str(e), "")
 
 @app.route("/", methods=["GET", "POST"])
 def home():
